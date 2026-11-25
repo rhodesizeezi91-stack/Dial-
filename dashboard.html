@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Dialer</title>
+<style>
+:root{--bg:#e8ece9;--panel:#f6f8f6;--ink:#17282a;--mute:#5c6d6b;--line:#c9d2cd;--live:#1c8a5a;--hand:#d9890b;--btn:#17282a;--btnt:#f6f8f6}
+@media (prefers-color-scheme:dark){:root{--bg:#101a1b;--panel:#182527;--ink:#e6efec;--mute:#8da09d;--line:#2a3b3d;--live:#3fc98a;--hand:#f0a63a;--btn:#e6efec;--btnt:#101a1b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,sans-serif;padding:16px;max-width:760px;margin-inline:auto}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+h1{font-size:20px;margin:0}h2{font-size:15px;margin:22px 0 8px;color:var(--mute);font-weight:600}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px;width:200px}
+.bar i{display:block;height:100%;background:var(--live);width:0;transition:width .4s}
+button{font:inherit;font-weight:600;border:0;border-radius:6px;padding:9px 16px;cursor:pointer;background:var(--btn);color:var(--btnt)}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:focus-visible{outline:2px solid var(--live);outline-offset:2px}
+.call{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--live);border-radius:6px;padding:12px 14px;margin-bottom:10px}
+.call.hand{border-left-color:var(--hand)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.who{font-weight:600}.sub{color:var(--mute);font-size:13px}
+.tag{color:var(--hand);font-weight:600;font-size:13px}
+.tx{margin:8px 0 0;font-size:14px}.tx div{margin:2px 0}.tx b{color:var(--mute);font-weight:600}
+.row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.empty{color:var(--mute);padding:14px 0}
+</style></head><body>
+<header>
+  <div><h1>AI Dialer</h1><div class="sub" id="prog">Idle</div><div class="bar"><i id="fill"></i></div></div>
+  <div><button id="go">Start dialing</button><a class="sub" href="/logout" style="margin-left:14px">Log out</a></div>
+</header>
+<h2>Connected calls</h2><div id="live"></div>
+<h2>Finished</h2><div id="done"></div>
+<script>
+let running=false;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mmss=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+async function post(u){const r=await fetch(u,{method:'POST'});return r.json()}
+document.getElementById('go').onclick=()=>post(running?'/api/stop':'/api/start');
+async function transfer(sid,b){b.disabled=true;b.textContent='Transferring…';const r=await post('/api/transfer/'+sid);if(!r.ok){b.disabled=false;b.textContent='Transfer to me';alert(r.error||'Transfer failed')}}
+async function tick(){
+  try{
+    const r=await fetch('/api/state');if(r.status==401){location='/login';return}const s=await r.json();running=s.running;
+    go.textContent=running?'Stop dialing':'Start dialing';
+    prog.textContent=s.total?(running?'Dialing ':'Stopped at ')+s.index+' of '+s.total:'Idle';
+    fill.style.width=s.total?(100*s.index/s.total)+'%':'0';
+    live.innerHTML=s.connected.length?s.connected.map(c=>`
+      <div class="call ${c.wants_human?'hand':''}"><div class="top">
+        <div><div class="who">${esc(c.name||c.number)} ${c.wants_human?'<span class="tag">wants a person</span>':''}</div>
+        <div class="sub">${esc(c.number)} · ${mmss(c.seconds)}</div></div>
+        <button onclick="transfer('${c.sid}',this)">Transfer to me</button></div>
+        <div class="tx">${c.transcript.map(t=>`<div><b>${t[0]=='ai'?'AI':'Them'}:</b> ${esc(t[1])}</div>`).join('')}</div></div>`).join('')
+      :'<div class="empty">No one is on the line yet. Calls appear here when someone picks up.</div>';
+    done.innerHTML=s.finished.length?s.finished.map(c=>`<div class="row"><span>${esc(c.name||c.number)} <span class="sub">${esc(c.number)}</span></span><span class="sub">${esc(c.status)}</span></div>`).join('')
+      :'<div class="empty">Nothing yet.</div>';
+  }catch(e){}
+}
+setInterval(tick,1500);tick();
+</script></body></html>
